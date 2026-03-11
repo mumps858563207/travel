@@ -1,54 +1,108 @@
+import { TravelPreferences, ItineraryResult, GroundingSource, TravelTheme, AccommodationType, CuisineType, TransportType, DayMealPreference } from "../types";
 
-import { TravelPreferences } from "../types";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://mumpsapi.zeabur.app/v1";
+const API_KEY = import.meta.env.VITE_API_KEY || "mumps2605";
 
-const GROQ_API_KEY = "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";
-const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+const getThemeDescription = (theme: TravelTheme): string => {
+  switch (theme) {
+    case 'Family': return '「親子導覽」：推薦設有親子友善設施與流暢動線。';
+    case 'Couple': return '「情侶深度遊」：推薦浪漫氛圍與私密秘境。';
+    case 'Solo': return '「獨旅探索」：著重安全性與適合單人體驗的角落。';
+    case 'Onsen': return '「溫泉舒壓」：深入介紹泉質特色與泡湯禮儀。';
+    case 'Shopping': return '「精品購物」：掌握流行商圈與退稅流程。';
+    case 'Culture': return '「文史深度」：著重歷史背景與建築意義。';
+    case 'Friends': return '「好友同遊」：推薦高互動性與拍照點。';
+    default: return '';
+  }
+};
 
-export const analyzeItineraryWithGroq = async (
+const getTransportLabel = (transport: TransportType): string => {
+  switch (transport) {
+    case 'Flight_Driving': return '飛機來回 + 當地自駕租車';
+    case 'Flight_HSR': return '飛機來回 + 當地鐵道/快鐵';
+    case 'Flight': return '僅飛機(含機場接送)';
+    case 'Driving': return '全程自駕';
+    case 'HSR': return '高鐵/台鐵/捷運';
+    case 'PublicTransport': return '全大眾運輸(鐵路、客運、計程車組合)';
+    default: return '自定義';
+  }
+};
+
+export const generateItinerary = async (
   prefs: TravelPreferences,
-  itineraryText: string
-): Promise<string> => {
+  userLocation?: { latitude: number; longitude: number },
+  existingItinerary?: string
+): Promise<ItineraryResult> => {
+  const transportContext = prefs.transport.startsWith('Flight') 
+    ? `【複合交通規劃】：導遊需規劃機場往返時間、建議的航空公司、以及落地後的租車/接駁銜接流程。`
+    : prefs.transport === 'PublicTransport'
+    ? `【大眾運輸深度規劃】：導遊需詳細列出建議搭乘的客運、火車班次時間，以及轉乘計程車的預估車資。`
+    : `【在地交通規劃】：專注於 ${getTransportLabel(prefs.transport)} 的路線優化。`;
+
+  const mealDetailedContext = prefs.dailyMeals.map(m => 
+    `Day ${m.day}: 早餐偏好「${m.breakfast}」, 午餐偏好「${m.lunch}」, 晚餐偏好「${m.dinner}」`
+  ).join('\n');
+
   const prompt = `
-    你是一位「資深導遊總監 (Tour Director)」。
-    我將提供由帶團導遊生成的初步行程，請你以總監的角度進行「體驗品質與風險管理分析」。
-    
-    【導覽行程】：
-    ${itineraryText}
-    
-    【分析任務】：
-    1. 行程順滑度：景點間的轉換是否符合人類心理期待？會不會太趕或太鬆？
-    2. 深度點評：針對 ${prefs.destination}，這份行程是否觸及了真正的核心文化？
-    3. 風險預警：根據 ${prefs.startDate} 至 ${prefs.endDate}，是否有天氣、交通或人潮風險？
-    4. 總監總結：給予「導遊總監專業評分 (1-5星)」並提供一個提振行程品質的關鍵金句。
-    
-    使用「繁體中文」與 Markdown 格式，展現總監級別的高層次見解。
+    你是一位擁有 20 年全球帶團經驗的「資深專業導遊」。
+    請為我規劃從 ${prefs.startPoint} 到 ${prefs.destination} 的 ${prefs.duration} 天專業導覽行程。
+
+    【客戶核心偏好設定】：
+    - 旅遊區域：${prefs.region === 'Domestic' ? '國內深度遊' : '國際頂級遊'}
+    - 交通模式：${getTransportLabel(prefs.transport)}
+    - 住宿偏好：${prefs.accommodations.join(', ')}
+    - 旅遊主題：${prefs.themes.map(t => getThemeDescription(t)).join(', ')}
+    - 出發日期：${prefs.startDate}，回程日期：${prefs.endDate}
+
+    【每日精確餐飲類型指令 - 請務必實踐】：
+    ${mealDetailedContext}
+
+    ${transportContext}
+
+    【行程輸出核心規則】：
+    1. **三餐強烈媒合**：行程表每一天「必須」明確包含早餐、午餐、晚餐。若使用者選了特定的餐飲類型（例如：韓式料理、火鍋、川菜），你「必須」搜尋目的地 ${prefs.destination} 對應類型的知名餐廳（請參考 Google 評分）。
+    2. **表格形式**：每一天的行程都必須以一個「完整的 Markdown 表格」呈現。
+    3. **表格欄位**：
+       | 日期 | 時間 | 項目 (景點/用餐/住宿) | 景點介紹/用餐樣式/住宿詳情 | 停留時間 | 車程時間 | 車程公里 |
+    4. **導航連結**：所有提及的餐廳、景點、飯店必須附帶 Google Maps 或預訂連結。
+    5. **文字格式**：繁體中文。
   `;
 
   try {
-    const response = await fetch(GROQ_ENDPOINT, {
+    const response = await fetch(`${API_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${GROQ_API_KEY}`,
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${API_KEY}`,
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "gemini-2.5-flash",
         messages: [
-          { role: "system", content: "你是一位精通全球旅遊市場趨勢與高端導覽服務的導遊總監。" },
-          { role: "user", content: prompt }
+          {
+            role: "system",
+            content: "你是一位專業的旅遊導遊，請提供詳細的行程規劃。"
+          },
+          {
+            role: "user",
+            content: prompt
+          }
         ],
         temperature: 0.7,
+        max_tokens: 2000,
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Groq API responded with status: ${response.status}`);
+      throw new Error(`API Error: ${response.status}`);
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
-  } catch (error) {
-    console.error("Groq API Error:", error);
-    return "### ⚠️ 導遊總監審核暫時無法產生\n\n由於連線問題，總監級別的分析暫時無法載入，請先參閱導遊為您規劃的詳細行程。";
+    const text = data.choices?.[0]?.message?.content || "導遊忙線中。";
+    const sources: GroundingSource[] = [];
+
+    return { text, sources, preferences: prefs };
+  } catch (error) { 
+    console.error("Backend API Error:", error); 
+    throw error; 
   }
 };
