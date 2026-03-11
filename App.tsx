@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import TravelForm from './components/TravelForm';
 import ItineraryDisplay from './components/ItineraryDisplay';
 import { TravelPreferences, ItineraryResult, DayMealPreference } from './types';
-import { generateItinerary } from './services/geminiService';
+import { generateItineraryFromBackend } from './services/backendService';
 import { analyzeItineraryWithGroq } from './services/groqService';
 
 const App: React.FC = () => {
@@ -13,12 +12,14 @@ const App: React.FC = () => {
 
   // 修正：初始日期 (明天至後天) 正確應為 2 天
   const initialDuration = 2;
-  const initialDailyMeals: DayMealPreference[] = Array.from({ length: initialDuration }, (_, i) => ({
-    day: i + 1,
-    breakfast: '道地特色早餐',
-    lunch: '在地人推薦/隨意',
-    dinner: '在地人推薦/隨意'
-  }));
+  const initialDailyMeals: DayMealPreference[] = Array.from({ length: initialDuration }, (_, i) => (
+    {
+      day: i + 1,
+      breakfast: '道地特色早餐',
+      lunch: '在地人推薦/隨意',
+      dinner: '在地人推薦/隨意'
+    }
+  ));
 
   const [preferences, setPreferences] = useState<TravelPreferences>({
     region: 'Domestic',
@@ -33,7 +34,7 @@ const App: React.FC = () => {
     startDate: tomorrow,
     endDate: dayAfterTomorrow
   });
-  
+
   const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | undefined>();
   const [itinerary, setItinerary] = useState<ItineraryResult | null>(null);
   const [loadingStep, setLoadingStep] = useState<string | null>(null);
@@ -61,18 +62,18 @@ const App: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    setLoadingStep("GEMINI");
+    setLoadingStep("BACKEND");
     setError(null);
     setItinerary(null);
-    
+
     try {
-      const geminiResult = await generateItinerary(preferences, userLocation, importedItinerary || undefined);
-      
+      const backendResult = await generateItineraryFromBackend(preferences, userLocation, importedItinerary || undefined);
+
       setLoadingStep("GROQ");
-      const groqAnalysis = await analyzeItineraryWithGroq(preferences, geminiResult.text);
-      
+      const groqAnalysis = await analyzeItineraryWithGroq(preferences, backendResult.text);
+
       setItinerary({
-        ...geminiResult,
+        ...backendResult,
         agentAnalysis: groqAnalysis
       });
       setImportedItinerary(null);
@@ -87,17 +88,17 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col font-['Noto_Sans_TC']">
       <Header />
-      
+
       <main className="flex-grow container mx-auto px-4 py-8 max-w-6xl flex flex-col lg:flex-row gap-10">
         <aside className="lg:w-1/3 lg:sticky lg:top-24 h-fit space-y-6">
           <div className="space-y-2">
             <h1 className="text-3xl font-black text-gray-900 leading-tight">AI 國內、外 <br /><span className="text-indigo-600 font-black">專業導遊規劃</span></h1>
-            <p className="text-gray-500 text-sm italic">Gemini 3 專業踩點 + Groq 領隊戰略分析</p>
+            <p className="text-gray-500 text-sm italic">後端 API 專業踩點 + Groq 領隊戰略分析</p>
           </div>
-          
-          <TravelForm 
-            preferences={preferences} 
-            onUpdate={handleUpdatePrefs} 
+
+          <TravelForm
+            preferences={preferences}
+            onUpdate={handleUpdatePrefs}
             onSubmit={handleSubmit}
             isLoading={!!loadingStep}
             onImport={handleImport}
@@ -107,13 +108,13 @@ const App: React.FC = () => {
           {loadingStep && (
             <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
               <div className="flex items-center justify-between text-xs font-bold uppercase tracking-widest">
-                <span className={loadingStep === "GEMINI" ? "text-indigo-600" : "text-gray-400"}>1. 專業導遊規劃中</span>
+                <span className={loadingStep === "BACKEND" ? "text-indigo-600" : "text-gray-400"}>1. 後端 API 規劃中</span>
                 <span className={loadingStep === "GROQ" ? "text-indigo-600" : "text-gray-400"}>2. 總召集人審核中</span>
               </div>
               <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                <div 
-                  className="bg-indigo-600 h-full transition-all duration-500 ease-out" 
-                  style={{ width: loadingStep === "GEMINI" ? '50%' : '100%' }}
+                <div
+                  className="bg-indigo-600 h-full transition-all duration-500 ease-out"
+                  style={{ width: loadingStep === "BACKEND" ? '50%' : '100%' }}
                 />
               </div>
             </div>
@@ -129,10 +130,10 @@ const App: React.FC = () => {
 
         <section className="lg:w-2/3">
           {itinerary || loadingStep ? (
-            <ItineraryDisplay 
-              result={itinerary} 
-              isLoading={!!loadingStep} 
-              currentStep={loadingStep} 
+            <ItineraryDisplay
+              result={itinerary}
+              isLoading={!!loadingStep}
+              currentStep={loadingStep}
               preferences={preferences}
             />
           ) : (
