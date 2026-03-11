@@ -1,0 +1,7 @@
+{
+  "name": "AI 國內、外專業導遊行程規劃",
+  "description": "專業 AI 導遊為您打造客製化國內外旅遊行程，結合實時 grounding 數據提供最優專業導覽建議。",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
