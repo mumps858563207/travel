@@ -1,54 +1,126 @@
-
 import { TravelPreferences } from "../types";
 
-const GROQ_API_KEY = "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";
-const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://mumpsapi.zeabur.app/v1";
+const API_KEY = import.meta.env.VITE_API_KEY || "mumps2605";
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || "";
 
 export const analyzeItineraryWithGroq = async (
   prefs: TravelPreferences,
   itineraryText: string
 ): Promise<string> => {
+  if (!GROQ_API_KEY) {
+    console.warn("GROQ_API_KEY not configured, using backend API instead");
+    return await analyzeWithBackendAPI(prefs, itineraryText);
+  }
+
   const prompt = `
-    你是一位「資深導遊總監 (Tour Director)」。
-    我將提供由帶團導遊生成的初步行程，請你以總監的角度進行「體驗品質與風險管理分析」。
-    
-    【導覽行程】：
+    你是一位資深的旅遊領隊，擁有豐富的行程規劃經驗。
+    請分析以下行程，並提供專業的改進建議和亮點分析。
+
+    【旅遊主題】：${prefs.themes.join(', ')}
+    【旅遊區域】：${prefs.region}
+    【交通方式】：${prefs.transport}
+
+    【原始行程】：
     ${itineraryText}
-    
-    【分析任務】：
-    1. 行程順滑度：景點間的轉換是否符合人類心理期待？會不會太趕或太鬆？
-    2. 深度點評：針對 ${prefs.destination}，這份行程是否觸及了真正的核心文化？
-    3. 風險預警：根據 ${prefs.startDate} 至 ${prefs.endDate}，是否有天氣、交通或人潮風險？
-    4. 總監總結：給予「導遊總監專業評分 (1-5星)」並提供一個提振行程品質的關鍵金句。
-    
-    使用「繁體中文」與 Markdown 格式，展現總監級別的高層次見解。
+
+    請提供以下分析：
+    1. 行程亮點總結（3-5 個重點）
+    2. 時間安排評估
+    3. 餐飲搭配評價
+    4. 改進建議
   `;
 
   try {
-    const response = await fetch(GROQ_ENDPOINT, {
+    const response = await fetch(`${API_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${GROQ_API_KEY}`,
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${API_KEY}`,
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "gemini-2.5-flash",
         messages: [
-          { role: "system", content: "你是一位精通全球旅遊市場趨勢與高端導覽服務的導遊總監。" },
-          { role: "user", content: prompt }
+          {
+            role: "system",
+            content: "你是一位專業的旅遊領隊，請提供詳細的行程分析和改進建議。"
+          },
+          {
+            role: "user",
+            content: prompt
+          }
         ],
         temperature: 0.7,
+        max_tokens: 1000,
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Groq API responded with status: ${response.status}`);
+      throw new Error(`API Error: ${response.status}`);
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    return data.choices?.[0]?.message?.content || "分析中...";
   } catch (error) {
-    console.error("Groq API Error:", error);
-    return "### ⚠️ 導遊總監審核暫時無法產生\n\n由於連線問題，總監級別的分析暫時無法載入，請先參閱導遊為您規劃的詳細行程。";
+    console.error("Groq Analysis Error:", error);
+    return await analyzeWithBackendAPI(prefs, itineraryText);
   }
 };
+
+async function analyzeWithBackendAPI(
+  prefs: TravelPreferences,
+  itineraryText: string
+): Promise<string> {
+  const prompt = `
+    你是一位資深的旅遊領隊，擁有豐富的行程規劃經驗。
+    請分析以下行程，並提供專業的改進建議和亮點分析。
+
+    【旅遊主題】：${prefs.themes.join(', ')}
+    【旅遊區域】：${prefs.region}
+    【交通方式】：${prefs.transport}
+
+    【原始行程】：
+    ${itineraryText}
+
+    請提供以下分析：
+    1. 行程亮點總結（3-5 個重點）
+    2. 時間安排評估
+    3. 餐飲搭配評價
+    4. 改進建議
+  `;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: "你是一位專業的旅遊領隊，請提供詳細的行程分析和改進建議。"
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Backend API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || "分析中...";
+  } catch (error) {
+    console.error("Backend API Error:", error);
+    throw error;
+  }
+}
