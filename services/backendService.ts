@@ -1,4 +1,3 @@
-
 import { TravelPreferences, ItineraryResult, GroundingSource } from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://mumpsapi.zeabur.app/v1";
@@ -21,26 +20,30 @@ export const generateItineraryFromBackend = async (
   `;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/chat/completions`, {
+    // 使用 Gemini API 端點
+    const geminiEndpoint = `${API_BASE_URL}/beta/models/gemini-2.5-flash:generateContent`;
+    
+    const response = await fetch(geminiEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`,
+        "x-goog-api-key": API_KEY,
       },
       body: JSON.stringify({
-        model: "gpt-4",
-        messages: [
-          {
-            role: "system",
-            content: "你是一位專業的旅遊導遊，請提供詳細的行程規劃。"
-          },
+        contents: [
           {
             role: "user",
-            content: prompt
+            parts: [
+              {
+                text: prompt
+              }
+            ]
           }
         ],
-        temperature: 0.7,
-        max_tokens: 2000,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2000,
+        }
       }),
     });
 
@@ -49,7 +52,7 @@ export const generateItineraryFromBackend = async (
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || "導遊忙線中。";
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "導遊忙線中。";
 
     return {
       text,
